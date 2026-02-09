@@ -1,0 +1,15 @@
+.vscode/**
+.vscode-test/**
+out/test/**
+src/**
+.gitignore
+.vscodeignore
+tsconfig.json
+eslint.config.mts
+eslint.config.mjs
+eslint.config.mjs.map
+package-lock.json
+bun.lock
+dev.sh
+test.txt
+test-file.txt

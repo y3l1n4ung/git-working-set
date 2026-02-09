@@ -29,15 +29,43 @@ interface Change {
     uri: vscode.Uri;
 }
 
-export function activate(context: vscode.ExtensionContext) {
-    const gitExtension = vscode.extensions.getExtension<GitExtension>('vscode.git')?.exports;
+let outputChannel: vscode.OutputChannel;
+
+export async function activate(context: vscode.ExtensionContext) {
+    outputChannel = vscode.window.createOutputChannel('Git Working Set');
+    outputChannel.appendLine('Activating Git Working Set extension...');
+    
+    const gitExtension = vscode.extensions.getExtension<GitExtension>('vscode.git');
     if (!gitExtension) {
+        outputChannel.appendLine('Error: Git extension not found.');
         vscode.window.showErrorMessage('Git extension not found.');
         return;
     }
 
-    const gitAPI = gitExtension.getAPI(1);
-    const treeDataProvider = new WorkingSetProvider(gitAPI);
+    if (!gitExtension.isActive) {
+        outputChannel.appendLine('Activating Git extension...');
+        await gitExtension.activate();
+    }
+
+    const gitAPI = gitExtension.exports.getAPI(1);
+    outputChannel.appendLine('Git API obtained.');
+    
+    const treeDataProvider = new WorkingSetProvider(gitAPI, outputChannel);
+    
+    // Initial check and retry if no repositories found
+    if (gitAPI.repositories.length === 0) {
+        outputChannel.appendLine('No repositories found immediately. Waiting for discovery...');
+        const checkInterval = setInterval(() => {
+            if (gitAPI.repositories.length > 0) {
+                outputChannel.appendLine(`Discovered ${gitAPI.repositories.length} repositories.`);
+                treeDataProvider.updateRepositories();
+                clearInterval(checkInterval);
+            }
+        }, 1000);
+        
+        // Stop checking after 10 seconds to avoid infinite loop
+        setTimeout(() => clearInterval(checkInterval), 10000);
+    }
     
     context.subscriptions.push(
         vscode.window.registerTreeDataProvider('git-working-set', treeDataProvider)
@@ -46,6 +74,12 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('git-working-set.openFile', (resource: vscode.Uri) => {
             vscode.window.showTextDocument(resource);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('git-working-set.refresh', () => {
+            treeDataProvider.updateRepositories();
         })
     );
 }
@@ -63,21 +97,34 @@ class WorkingSetProvider implements vscode.TreeDataProvider<TreeItem> {
     private repositories: Repository[] = [];
     private disposables: vscode.Disposable[] = [];
 
-    constructor(private gitAPI: GitAPI) {
+    constructor(private gitAPI: GitAPI, private output: vscode.OutputChannel) {
+        this.output.appendLine('Initializing Working Set View...');
         this.updateRepositories();
         
-        this.disposables.push(gitAPI.onDidOpenRepository(() => this.updateRepositories()));
-        this.disposables.push(gitAPI.onDidCloseRepository(() => this.updateRepositories()));
+        this.disposables.push(gitAPI.onDidOpenRepository(() => {
+            this.output.appendLine('Repository opened, updating...');
+            this.updateRepositories();
+        }));
+        this.disposables.push(gitAPI.onDidCloseRepository(() => {
+            this.output.appendLine('Repository closed, updating...');
+            this.updateRepositories();
+        }));
     }
 
-    private updateRepositories() {
+    public updateRepositories() {
+        this.output.appendLine('Updating repositories...');
         this.disposables.forEach(d => d.dispose());
         this.disposables = [];
         
         this.repositories = this.gitAPI.repositories;
+        this.output.appendLine(`Found ${this.repositories.length} repositories.`);
         
-        this.repositories.forEach(repo => {
-            this.disposables.push(repo.state.onDidChange(() => this.refresh()));
+        this.repositories.forEach((repo, index) => {
+            this.output.appendLine(`Listening to repository ${index}: ${repo.rootUri.fsPath}`);
+            this.disposables.push(repo.state.onDidChange(() => {
+                this.output.appendLine(`Changes detected in repository ${index}`);
+                this.refresh();
+            }));
         });
         
         this.refresh();
