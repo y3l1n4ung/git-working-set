@@ -2,7 +2,7 @@
   "name": "git-working-set",
   "displayName": "Git Working Set",
   "description": "Shows a focused view of working tree changes in the explorer.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "Widget-Lab",
   "license": "MIT",
   "engines": {
@@ -59,7 +59,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.19.10",
-    "@types/vscode": "^1.109.0",
+    "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",
     "eslint": "^9.39.2",
