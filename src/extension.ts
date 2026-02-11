@@ -1,33 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-
-/**
- * Partial Git Extension API interface
- */
-interface GitExtension {
-    getAPI(version: number): GitAPI;
-}
-
-interface GitAPI {
-    repositories: Repository[];
-    onDidOpenRepository: vscode.Event<Repository>;
-    onDidCloseRepository: vscode.Event<Repository>;
-}
-
-interface Repository {
-    rootUri: vscode.Uri;
-    state: RepositoryState;
-}
-
-interface RepositoryState {
-    workingTreeChanges: Change[];
-    indexChanges: Change[];
-    onDidChange: vscode.Event<void>;
-}
-
-interface Change {
-    uri: vscode.Uri;
-}
+import { GitExtension, Change } from './types';
+import { TreeItem } from './treeItem';
+import { WorkingSetProvider } from './provider';
 
 let outputChannel: vscode.OutputChannel;
 
@@ -71,9 +46,194 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.window.registerTreeDataProvider('git-working-set', treeDataProvider)
     );
 
+    /**
+     * Helper to create a Git URI for a specific reference (HEAD, Index, etc.)
+     */
+    function createGitUri(uri: vscode.Uri, ref: string): vscode.Uri {
+        return uri.with({
+            scheme: 'git',
+            query: JSON.stringify({
+                path: uri.fsPath,
+                ref: ref
+            })
+        });
+    }
+
+    /**
+     * Finds the most comprehensive change for a URI (HEAD -> Working Tree)
+     */
+    function getComprehensiveChange(uri: vscode.Uri): Change | undefined {
+        outputChannel.appendLine(`Searching for comprehensive change: ${uri.fsPath}`);
+        for (const repo of gitAPI.repositories) {
+            const wtChange = repo.state.workingTreeChanges.find(c => c.uri.toString() === uri.toString());
+            const idxChange = repo.state.indexChanges.find(c => c.uri.toString() === uri.toString());
+
+            if (wtChange && idxChange) {
+                outputChannel.appendLine(`  - Found partially staged change. Base: HEAD`);
+                return {
+                    uri: wtChange.uri,
+                    originalUri: idxChange.originalUri // idxChange.originalUri points to HEAD
+                };
+            }
+            if (wtChange) {
+                outputChannel.appendLine(`  - Found working tree change. Base: Index/HEAD`);
+                return wtChange;
+            }
+            if (idxChange) {
+                outputChannel.appendLine(`  - Found index change. Base: HEAD`);
+                return idxChange;
+            }
+        }
+        outputChannel.appendLine(`  - No specific change found in Git state.`);
+        return undefined;
+    }
+
+    /**
+     * Shared logic to open diffs in the best available format
+     */
+    async function openReview(changes: Change[], label: string = 'Working Set Review') {
+        if (changes.length === 0) {
+            vscode.window.showInformationMessage('No changes to review.');
+            return;
+        }
+
+        outputChannel.appendLine(`Attempting to open review for ${changes.length} file(s)`);
+        const allCommands = await vscode.commands.getCommands(true);
+
+        // For a SINGLE file, vscode.diff is the most reliable way to get high-quality side-by-side
+        if (changes.length === 1) {
+            const change = changes[0];
+            let original = change.originalUri;
+            
+            if (!original) {
+                // Try to create a dummy "empty" URI for untracked files left side
+                original = createGitUri(change.uri, 'HEAD');
+            }
+
+            outputChannel.appendLine(`Opening side-by-side diff for: ${change.uri.fsPath}`);
+            try {
+                await vscode.commands.executeCommand('vscode.diff', original, change.uri, `${path.basename(change.uri.fsPath)} (Review Mode)`);
+                return;
+            } catch (err) {
+                outputChannel.appendLine(`vscode.diff failed: ${err}. Falling back to git.openChange.`);
+                await vscode.commands.executeCommand('git.openChange', change.uri);
+                return;
+            }
+        }
+
+        // For MULTIPLE files, attempt the native Multi-Diff experience
+        outputChannel.appendLine(`Multi-file processing...`);
+        
+        // Preference 1: git.viewChanges (Native Git Multi-Diff)
+        if (allCommands.includes('git.viewChanges')) {
+            outputChannel.appendLine('Using native command: git.viewChanges');
+            await vscode.commands.executeCommand('git.viewChanges');
+            return;
+        }
+
+        // Preference 2: vscode.changes
+        if (allCommands.includes('vscode.changes')) {
+            outputChannel.appendLine('Using command: vscode.changes');
+            try {
+                const resources = changes.map(c => ({
+                    original: c.originalUri || createGitUri(c.uri, 'HEAD'),
+                    modified: c.uri,
+                    label: path.basename(c.uri.fsPath)
+                }));
+                await vscode.commands.executeCommand('vscode.changes', {
+                    title: label,
+                    resources
+                });
+                return;
+            } catch (err) {
+                outputChannel.appendLine(`vscode.changes failed: ${err}`);
+            }
+        }
+
+        // Preference 3: vscode.openMultiDiff (1.88+)
+        if (allCommands.includes('vscode.openMultiDiff')) {
+            outputChannel.appendLine('Using command: vscode.openMultiDiff');
+            try {
+                const resources = changes.map(c => ({
+                    original: c.originalUri || createGitUri(c.uri, 'HEAD'),
+                    modified: c.uri
+                }));
+                await vscode.commands.executeCommand('vscode.openMultiDiff', { resources, label });
+                return;
+            } catch (err) {
+                outputChannel.appendLine(`vscode.openMultiDiff failed: ${err}`);
+            }
+        }
+
+        // Final fallback: standard multi-tab
+        if (allCommands.includes('git.openAllChanges')) {
+            outputChannel.appendLine('Using fallback: git.openAllChanges');
+            await vscode.commands.executeCommand('git.openAllChanges');
+            return;
+        }
+
+        vscode.window.showErrorMessage('Review Mode is not fully supported in this build.');
+    }
+
     context.subscriptions.push(
-        vscode.commands.registerCommand('git-working-set.openFile', (resource: vscode.Uri) => {
-            vscode.window.showTextDocument(resource);
+        vscode.commands.registerCommand('git-working-set.openFile', (item: TreeItem) => {
+            const uri = item.resourceUri;
+            if (uri) {
+                vscode.commands.executeCommand('vscode.open', uri);
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('git-working-set.revealInOS', (item: TreeItem) => {
+            const uri = item.resourceUri;
+            if (uri) {
+                vscode.commands.executeCommand('revealFileInOS', uri);
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('git-working-set.copyPath', (item: TreeItem) => {
+            const uri = item.resourceUri;
+            if (uri) {
+                vscode.env.clipboard.writeText(uri.fsPath);
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('git-working-set.copyRelativePath', (item: TreeItem) => {
+            const uri = item.resourceUri;
+            if (uri) {
+                const relativePath = vscode.workspace.asRelativePath(uri);
+                vscode.env.clipboard.writeText(relativePath);
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('git-working-set.openDiff', async (item: TreeItem) => {
+            outputChannel.appendLine(`Command git-working-set.openDiff triggered for: ${item.resourceUri?.fsPath}`);
+            const uri = item.resourceUri;
+            if (!uri) return;
+
+            const change = getComprehensiveChange(uri);
+            if (change) {
+                await openReview([change]);
+            } else {
+                outputChannel.appendLine(`No Git change found for URI, falling back to git.openChange`);
+                await vscode.commands.executeCommand('git.openChange', uri);
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('git-working-set.openReview', async () => {
+            outputChannel.appendLine(`Command git-working-set.openReview triggered`);
+            const allChanges = treeDataProvider.getAllChanges();
+            const comprehensiveChanges = allChanges.map(c => getComprehensiveChange(c.uri) || c);
+            await openReview(comprehensiveChanges);
         })
     );
 
@@ -82,178 +242,4 @@ export async function activate(context: vscode.ExtensionContext) {
             treeDataProvider.updateRepositories();
         })
     );
-}
-
-interface TreeNode {
-    __uri?: vscode.Uri;
-    __isFolder?: boolean;
-    [key: string]: TreeNode | vscode.Uri | boolean | undefined;
-}
-
-class WorkingSetProvider implements vscode.TreeDataProvider<TreeItem> {
-    private _onDidChangeTreeData: vscode.EventEmitter<TreeItem | undefined | void> = new vscode.EventEmitter<TreeItem | undefined | void>();
-    readonly onDidChangeTreeData: vscode.Event<TreeItem | undefined | void> = this._onDidChangeTreeData.event;
-
-    private repositories: Repository[] = [];
-    private disposables: vscode.Disposable[] = [];
-
-    constructor(private gitAPI: GitAPI, private output: vscode.OutputChannel) {
-        this.output.appendLine('Initializing Working Set View...');
-        this.updateRepositories();
-        
-        this.disposables.push(gitAPI.onDidOpenRepository(() => {
-            this.output.appendLine('Repository opened, updating...');
-            this.updateRepositories();
-        }));
-        this.disposables.push(gitAPI.onDidCloseRepository(() => {
-            this.output.appendLine('Repository closed, updating...');
-            this.updateRepositories();
-        }));
-    }
-
-    public updateRepositories() {
-        this.output.appendLine('Updating repositories...');
-        this.disposables.forEach(d => d.dispose());
-        this.disposables = [];
-        
-        this.repositories = this.gitAPI.repositories;
-        this.output.appendLine(`Found ${this.repositories.length} repositories.`);
-        
-        this.repositories.forEach((repo, index) => {
-            this.output.appendLine(`Listening to repository ${index}: ${repo.rootUri.fsPath}`);
-            this.disposables.push(repo.state.onDidChange(() => {
-                this.output.appendLine(`Changes detected in repository ${index}`);
-                this.refresh();
-            }));
-        });
-        
-        this.refresh();
-    }
-
-    refresh(): void {
-        this._onDidChangeTreeData.fire();
-    }
-
-    getTreeItem(element: TreeItem): vscode.TreeItem {
-        return element;
-    }
-
-    async getChildren(element?: TreeItem): Promise<TreeItem[]> {
-        if (!element) {
-            // Root level: Show repositories if multiple, or merged files if single
-            if (this.repositories.length === 0) {
-                return [];
-            }
-            
-            // Build the tree for all repositories
-            const allChanges = this.repositories.flatMap(repo => [
-                ...repo.state.workingTreeChanges,
-                ...repo.state.indexChanges
-            ]);
-            
-            // Remove duplicates (e.g. file in both working tree and index)
-            const uniqueUris = Array.from(new Set(allChanges.map(c => c.uri.toString())))
-                .map(uriStr => vscode.Uri.parse(uriStr));
-
-            if (uniqueUris.length === 0) {
-                return [];
-            }
-
-            return this.buildHierarchy(uniqueUris);
-        }
-
-        return element.children || [];
-    }
-
-    private buildHierarchy(uris: vscode.Uri[]): TreeItem[] {
-        const root: TreeNode = {};
-
-        for (const uri of uris) {
-            const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
-            if (!workspaceFolder) continue;
-
-            const relativePath = path.relative(workspaceFolder.uri.fsPath, uri.fsPath);
-            const parts = relativePath.split(path.sep);
-
-            let current = root;
-            let currentPath = workspaceFolder.uri.fsPath;
-
-            for (let i = 0; i < parts.length; i++) {
-                const part = parts[i];
-                currentPath = path.join(currentPath, part);
-                
-                if (!current[part]) {
-                    current[part] = {
-                        __uri: vscode.Uri.file(currentPath),
-                        __isFolder: i < parts.length - 1
-                    } as TreeNode;
-                }
-                current = current[part] as TreeNode;
-            }
-        }
-
-        return this.mapToTreeItems(root);
-    }
-
-    private mapToTreeItems(node: TreeNode): TreeItem[] {
-        const items: TreeItem[] = [];
-
-        for (const key in node) {
-            if (key === '__uri' || key === '__isFolder') continue;
-
-            const childNode = node[key] as TreeNode;
-            const uri = childNode.__uri!;
-            const isFolder = childNode.__isFolder!;
-
-            const item = new TreeItem(
-                key,
-                uri,
-                isFolder ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
-                isFolder
-            );
-
-            if (isFolder) {
-                item.children = this.mapToTreeItems(childNode);
-            } else {
-                item.command = {
-                    command: 'vscode.open',
-                    title: 'Open File',
-                    arguments: [uri]
-                };
-            }
-
-            items.push(item);
-        }
-
-        // Sort: Folders first, then alphabetically
-        return items.sort((a, b) => {
-            if (a.isFolder && !b.isFolder) return -1;
-            if (!a.isFolder && b.isFolder) return 1;
-            return a.label!.toString().localeCompare(b.label!.toString());
-        });
-    }
-
-    dispose() {
-        this.disposables.forEach(d => d.dispose());
-    }
-}
-
-class TreeItem extends vscode.TreeItem {
-    children?: TreeItem[];
-
-    constructor(
-        public readonly label: string,
-        public readonly resourceUri: vscode.Uri,
-        public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-        public readonly isFolder: boolean
-    ) {
-        super(label, collapsibleState);
-        
-        this.resourceUri = resourceUri;
-        if (!isFolder) {
-            this.contextValue = 'file';
-        } else {
-            this.contextValue = 'folder';
-        }
-    }
 }
