@@ -1,50 +1,67 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { GitAPI, Repository, Change, TreeNode } from './types';
-import { TreeItem } from './treeItem';
+import { GitAPI, Repository, Change, TreeNode } from '../types';
+import { TreeItem } from '../treeItem';
 
 export class WorkingSetProvider implements vscode.TreeDataProvider<TreeItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<TreeItem | undefined | void> = new vscode.EventEmitter<TreeItem | undefined | void>();
     readonly onDidChangeTreeData: vscode.Event<TreeItem | undefined | void> = this._onDidChangeTreeData.event;
 
     private repositories: Repository[] = [];
-    private disposables: vscode.Disposable[] = [];
+    private repoDisposables: vscode.Disposable[] = [];
+    private lifeCycleDisposables: vscode.Disposable[] = [];
 
     constructor(private gitAPI: GitAPI, private output: vscode.OutputChannel) {
         this.output.appendLine('Initializing Working Set View...');
-        this.updateRepositories();
         
-        this.disposables.push(gitAPI.onDidOpenRepository(() => {
-            this.output.appendLine('Repository opened, updating...');
+        // Listen for new repositories
+        this.lifeCycleDisposables.push(gitAPI.onDidOpenRepository(() => {
+            this.output.appendLine('Repository opened event, updating...');
             this.updateRepositories();
         }));
-        this.disposables.push(gitAPI.onDidCloseRepository(() => {
-            this.output.appendLine('Repository closed, updating...');
+        this.lifeCycleDisposables.push(gitAPI.onDidCloseRepository(() => {
+            this.output.appendLine('Repository closed event, updating...');
             this.updateRepositories();
         }));
+
+        // Initial load
+        if (gitAPI.repositories.length > 0) {
+            this.updateRepositories();
+        }
     }
 
     public updateRepositories() {
-        this.output.appendLine('Updating repositories...');
-        this.disposables.forEach(d => d.dispose());
-        this.disposables = [];
+        this.output.appendLine('Updating repositories and listeners...');
+        // Only dispose repository-specific listeners
+        this.repoDisposables.forEach(d => d.dispose());
+        this.repoDisposables = [];
         
         this.repositories = this.gitAPI.repositories;
         this.output.appendLine(`Found ${this.repositories.length} repositories.`);
         
         this.repositories.forEach((repo, index) => {
             this.output.appendLine(`Listening to repository ${index}: ${repo.rootUri.fsPath}`);
-            this.disposables.push(repo.state.onDidChange(() => {
-                this.output.appendLine(`Changes detected in repository ${index}`);
-                this.refresh();
+            this.repoDisposables.push(repo.state.onDidChange(() => {
+                this.refresh(index);
             }));
         });
         
         this.refresh();
     }
 
-    refresh(): void {
-        this._onDidChangeTreeData.fire();
+    private refreshTimer: NodeJS.Timeout | undefined;
+
+    refresh(repoIndex?: number): void {
+        if (this.refreshTimer) {
+            clearTimeout(this.refreshTimer);
+        }
+        this.refreshTimer = setTimeout(() => {
+            if (repoIndex !== undefined) {
+                this.output.appendLine(`Processing debounced changes for repository ${repoIndex}`);
+            }
+            this._onDidChangeTreeData.fire(undefined);
+            this.refreshTimer = undefined;
+        }, 300);
     }
 
     getTreeItem(element: TreeItem): vscode.TreeItem {
@@ -122,8 +139,8 @@ export class WorkingSetProvider implements vscode.TreeDataProvider<TreeItem> {
                 item.children = this.mapToTreeItems(childNode);
             } else {
                 item.command = {
-                    command: 'git-working-set.openDiff',
-                    title: 'Open Changes',
+                    command: 'git-working-set.openFile',
+                    title: 'Open File',
                     arguments: [item]
                 };
             }
@@ -137,6 +154,7 @@ export class WorkingSetProvider implements vscode.TreeDataProvider<TreeItem> {
     }
 
     dispose() {
-        this.disposables.forEach(d => d.dispose());
+        this.lifeCycleDisposables.forEach(d => d.dispose());
+        this.repoDisposables.forEach(d => d.dispose());
     }
 }

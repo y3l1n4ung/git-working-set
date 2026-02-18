@@ -16,6 +16,9 @@ export interface GitAPI {
 export interface Repository {
     rootUri: vscode.Uri;
     state: RepositoryState;
+    // Expanded methods for direct API access
+    clean(paths: string[]): Promise<void>;
+    checkout(treeish: string, paths: string[]): Promise<void>;
 }
 
 export interface RepositoryState {
@@ -27,6 +30,28 @@ export interface RepositoryState {
 export interface Change {
     readonly uri: vscode.Uri;
     readonly originalUri?: vscode.Uri;
+    readonly status: Status;
+}
+
+export const enum Status {
+    INDEX_MODIFIED = 0,
+    INDEX_ADDED = 1,
+    INDEX_DELETED = 2,
+    INDEX_RENAMED = 3,
+    INDEX_COPIED = 4,
+
+    MODIFIED = 5,
+    DELETED = 6,
+    UNTRACKED = 7,
+    IGNORED = 8,
+
+    ADDED_BY_US = 9,
+    ADDED_BY_THEM = 10,
+    DELETED_BY_US = 11,
+    DELETED_BY_THEM = 12,
+    BOTH_ADDED = 13,
+    BOTH_DELETED = 14,
+    BOTH_MODIFIED = 15
 }
 
 export interface TreeNode {

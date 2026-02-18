@@ -70,6 +70,11 @@
         "icon": "$(diff)"
       },
       {
+        "command": "git-working-set.revert",
+        "title": "Revert Changes",
+        "icon": "$(discard)"
+      },
+      {
         "command": "git-working-set.openReview",
         "title": "Review Working Set",
         "icon": "$(git-pull-request)"
@@ -97,10 +102,20 @@
         {
           "command": "git-working-set.openDiff",
           "when": "view == git-working-set && viewItem == file",
-          "group": "inline"
+          "group": "inline@1"
+        },
+        {
+          "command": "git-working-set.revert",
+          "when": "view == git-working-set && viewItem == file",
+          "group": "inline@2"
         },
         {
           "command": "git-working-set.openDiff",
+          "when": "view == git-working-set && viewItem == file",
+          "group": "1_modification"
+        },
+        {
+          "command": "git-working-set.revert",
           "when": "view == git-working-set && viewItem == file",
           "group": "1_modification"
         },
@@ -123,6 +138,37 @@
           "command": "git-working-set.copyRelativePath",
           "when": "view == git-working-set",
           "group": "5_copy"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "git-working-set.openReview",
+          "group": "navigation",
+          "when": "scmProvider == git-working-set-scm"
+        },
+        {
+          "command": "git-working-set.refresh",
+          "group": "navigation",
+          "when": "scmProvider == git-working-set-scm"
+        }
+      ],
+      "scm/resourceGroup/context": [
+        {
+          "command": "git-working-set.openReview",
+          "group": "inline",
+          "when": "scmProvider == git-working-set-scm"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "command": "git-working-set.openDiff",
+          "group": "inline@1",
+          "when": "scmProvider == git-working-set-scm"
+        },
+        {
+          "command": "git-working-set.revert",
+          "group": "inline@2",
+          "when": "scmProvider == git-working-set-scm"
         }
       ]
     }
