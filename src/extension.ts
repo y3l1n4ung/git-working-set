@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { GitExtension } from './types';
 import { WorkingSetProvider } from './providers/treeProvider';
-import { WorkingSetSCM } from './providers/scmProvider';
 import { EmptyContentProvider, ReadOnlyProvider, REVIEW_SCHEME } from './providers/contentProvider';
 import { openFile, openDiff, revert, openReview, revealInOS, copyPath, copyRelativePath } from './commands';
 
@@ -29,12 +28,6 @@ export async function activate(context: vscode.ExtensionContext) {
     
     // Providers
     const treeDataProvider = new WorkingSetProvider(gitAPI, outputChannel);
-    const workingSetSCM = new WorkingSetSCM(context, outputChannel);
-    
-    // Sync SCM
-    context.subscriptions.push(treeDataProvider.onDidChangeTreeData(() => {
-        workingSetSCM.updateChanges(treeDataProvider.getAllChanges());
-    }));
     
     // Views
     context.subscriptions.push(
