@@ -98,6 +98,10 @@
         "command": "git-working-set.refresh",
         "title": "Refresh",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "git-working-set.focus",
+        "title": "Focus Working Set"
       }
     ],
     "menus": {

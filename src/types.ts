@@ -23,6 +23,7 @@ export interface Repository {
     checkout(treeish: string, paths: string[]): Promise<void>;
     revert(paths: string[]): Promise<void>;
     reset(treeish: string, paths: string[]): Promise<void>;
+    diff(cached?: boolean): Promise<string>;
 }
 
 export interface RepositoryState {

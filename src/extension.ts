@@ -33,9 +33,12 @@ export async function activate(context: vscode.ExtensionContext) {
     const treeDataProvider = new WorkingSetProvider(gitAPI, outputChannel);
     
     // Views
-    context.subscriptions.push(
-        vscode.window.registerTreeDataProvider('git-working-set', treeDataProvider)
-    );
+    const treeView = vscode.window.createTreeView('git-working-set', {
+        treeDataProvider: treeDataProvider,
+        showCollapseAll: false
+    });
+    treeDataProvider.view = treeView;
+    context.subscriptions.push(treeView);
 
     // Commands
     context.subscriptions.push(
@@ -52,6 +55,9 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('git-working-set.findInFolder', (item) => findInFolder(item)),
         vscode.commands.registerCommand('git-working-set.openInTerminal', (item) => openInTerminal(item)),
         vscode.commands.registerCommand('git-working-set.selectForCompare', (item) => selectForCompare(item)),
-        vscode.commands.registerCommand('git-working-set.compareWithSelected', (item) => compareWithSelected(item))
+        vscode.commands.registerCommand('git-working-set.compareWithSelected', (item) => compareWithSelected(item)),
+        vscode.commands.registerCommand('git-working-set.focus', () => {
+            vscode.commands.executeCommand('workbench.view.extension.git-working-set');
+        })
     );
 }

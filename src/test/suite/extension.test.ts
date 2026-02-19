@@ -26,7 +26,8 @@ suite('Git Working Set Test Suite', () => {
             'git-working-set.findInFolder',
             'git-working-set.openInTerminal',
             'git-working-set.selectForCompare',
-            'git-working-set.compareWithSelected'
+            'git-working-set.compareWithSelected',
+            'git-working-set.focus'
         ];
         for (const cmd of expected) {
             assert.ok(commands.includes(cmd), `Command ${cmd} should be registered`);

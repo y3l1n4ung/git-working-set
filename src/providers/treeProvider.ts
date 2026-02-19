@@ -7,9 +7,10 @@ export class WorkingSetProvider implements vscode.TreeDataProvider<TreeItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<TreeItem | undefined | void> = new vscode.EventEmitter<TreeItem | undefined | void>();
     readonly onDidChangeTreeData: vscode.Event<TreeItem | undefined | void> = this._onDidChangeTreeData.event;
 
-    private repositories: Repository[] = [];
+    public repositories: Repository[] = [];
     private repoDisposables: vscode.Disposable[] = [];
     private lifeCycleDisposables: vscode.Disposable[] = [];
+    private _view: vscode.TreeView<TreeItem> | undefined;
 
     constructor(private gitAPI: GitAPI, private output: vscode.OutputChannel) {
         this.output.appendLine('Initializing Working Set View...');
@@ -28,6 +29,10 @@ export class WorkingSetProvider implements vscode.TreeDataProvider<TreeItem> {
         if (gitAPI.repositories.length > 0) {
             this.updateRepositories();
         }
+    }
+
+    public set view(view: vscode.TreeView<TreeItem>) {
+        this._view = view;
     }
 
     public updateRepositories() {
@@ -55,13 +60,53 @@ export class WorkingSetProvider implements vscode.TreeDataProvider<TreeItem> {
         if (this.refreshTimer) {
             clearTimeout(this.refreshTimer);
         }
-        this.refreshTimer = setTimeout(() => {
+        this.refreshTimer = setTimeout(async () => {
             if (repoIndex !== undefined) {
                 this.output.appendLine(`Processing debounced changes for repository ${repoIndex}`);
             }
             this._onDidChangeTreeData.fire(undefined);
+            await this.updateTitle();
             this.refreshTimer = undefined;
         }, 300);
+    }
+
+    private async updateTitle() {
+        if (!this._view) return;
+
+        let additions = 0;
+        let deletions = 0;
+
+        for (const repo of this.repositories) {
+            try {
+                const diff = await repo.diff();
+                const lines = diff.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('+') && !line.startsWith('+++')) additions++;
+                    if (line.startsWith('-') && !line.startsWith('---')) deletions++;
+                }
+            } catch { /* ignore */ }
+        }
+
+        /**
+         * Native VS Code Badge (Professional Look)
+         * Shows the total file count in a colored bubble on the sidebar icon.
+         */
+        const allChanges = this.getAllChanges();
+        this._view.badge = {
+            value: allChanges.length,
+            tooltip: `${allChanges.length} files changed in working set`
+        };
+
+        /**
+         * Enhanced Title Format: Working Set (+12 -0)
+         * Provides a structured PR-style summary.
+         */
+        let stats = '';
+        if (additions > 0 || deletions > 0) {
+            stats = ` (+${additions} -${deletions})`;
+        }
+        
+        this._view.title = `Working Set${stats}`;
     }
 
     getTreeItem(element: TreeItem): vscode.TreeItem {
