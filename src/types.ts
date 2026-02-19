@@ -9,16 +9,20 @@ export interface GitExtension {
 
 export interface GitAPI {
     repositories: Repository[];
+    getRepository(uri: vscode.Uri): Repository | null;
     onDidOpenRepository: vscode.Event<Repository>;
     onDidCloseRepository: vscode.Event<Repository>;
 }
 
 export interface Repository {
-    rootUri: vscode.Uri;
-    state: RepositoryState;
-    // Expanded methods for direct API access
+    readonly rootUri: vscode.Uri;
+    readonly state: RepositoryState;
+    // Direct API methods
+    add(paths: string[]): Promise<void>;
     clean(paths: string[]): Promise<void>;
     checkout(treeish: string, paths: string[]): Promise<void>;
+    revert(paths: string[]): Promise<void>;
+    reset(treeish: string, paths: string[]): Promise<void>;
 }
 
 export interface RepositoryState {
