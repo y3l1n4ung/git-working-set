@@ -11,6 +11,11 @@ export class WorkingSetProvider implements vscode.TreeDataProvider<TreeItem> {
     private repoDisposables: vscode.Disposable[] = [];
     private lifeCycleDisposables: vscode.Disposable[] = [];
     private _view: vscode.TreeView<TreeItem> | undefined;
+    private refreshTimer: NodeJS.Timeout | undefined;
+    private isDisposed = false;
+
+    // Cache for diff stats per repository
+    private diffStatsCache: Map<string, { additions: number, deletions: number }> = new Map();
 
     constructor(private gitAPI: GitAPI, private output: vscode.OutputChannel) {
         this.output.appendLine('Initializing Working Set View...');
@@ -36,10 +41,12 @@ export class WorkingSetProvider implements vscode.TreeDataProvider<TreeItem> {
     }
 
     public updateRepositories() {
+        if (this.isDisposed) return;
         this.output.appendLine('Updating repositories and listeners...');
-        // Only dispose repository-specific listeners
+        
         this.repoDisposables.forEach(d => d.dispose());
         this.repoDisposables = [];
+        this.diffStatsCache.clear();
         
         this.repositories = this.gitAPI.repositories;
         this.output.appendLine(`Found ${this.repositories.length} repositories.`);
@@ -47,6 +54,7 @@ export class WorkingSetProvider implements vscode.TreeDataProvider<TreeItem> {
         this.repositories.forEach((repo, index) => {
             this.output.appendLine(`Listening to repository ${index}: ${repo.rootUri.fsPath}`);
             this.repoDisposables.push(repo.state.onDidChange(() => {
+                this.diffStatsCache.delete(repo.rootUri.toString());
                 this.refresh(index);
             }));
         });
@@ -54,13 +62,15 @@ export class WorkingSetProvider implements vscode.TreeDataProvider<TreeItem> {
         this.refresh();
     }
 
-    private refreshTimer: NodeJS.Timeout | undefined;
-
     refresh(repoIndex?: number): void {
+        if (this.isDisposed) return;
+
         if (this.refreshTimer) {
             clearTimeout(this.refreshTimer);
         }
         this.refreshTimer = setTimeout(async () => {
+            if (this.isDisposed) return;
+
             if (repoIndex !== undefined) {
                 this.output.appendLine(`Processing debounced changes for repository ${repoIndex}`);
             }
@@ -71,42 +81,47 @@ export class WorkingSetProvider implements vscode.TreeDataProvider<TreeItem> {
     }
 
     private async updateTitle() {
-        if (!this._view) return;
+        if (!this._view || this.isDisposed) return;
 
-        let additions = 0;
-        let deletions = 0;
+        let totalAdditions = 0;
+        let totalDeletions = 0;
 
         for (const repo of this.repositories) {
-            try {
-                const diff = await repo.diff();
-                const lines = diff.split('\n');
-                for (const line of lines) {
-                    if (line.startsWith('+') && !line.startsWith('+++')) additions++;
-                    if (line.startsWith('-') && !line.startsWith('---')) deletions++;
+            const repoUriStr = repo.rootUri.toString();
+            let stats = this.diffStatsCache.get(repoUriStr);
+
+            if (!stats) {
+                try {
+                    const diff = await repo.diff();
+                    const lines = diff.split('\n');
+                    let additions = 0;
+                    let deletions = 0;
+                    for (const line of lines) {
+                        if (line.startsWith('+') && !line.startsWith('+++')) additions++;
+                        if (line.startsWith('-') && !line.startsWith('---')) deletions++;
+                    }
+                    stats = { additions, deletions };
+                    this.diffStatsCache.set(repoUriStr, stats);
+                } catch {
+                    stats = { additions: 0, deletions: 0 };
                 }
-            } catch { /* ignore */ }
+            }
+            totalAdditions += stats.additions;
+            totalDeletions += stats.deletions;
         }
 
-        /**
-         * Native VS Code Badge (Professional Look)
-         * Shows the total file count in a colored bubble on the sidebar icon.
-         */
         const allChanges = this.getAllChanges();
         this._view.badge = {
             value: allChanges.length,
             tooltip: `${allChanges.length} files changed in working set`
         };
 
-        /**
-         * Enhanced Title Format: Working Set (+12 -0)
-         * Provides a structured PR-style summary.
-         */
-        let stats = '';
-        if (additions > 0 || deletions > 0) {
-            stats = ` (+${additions} -${deletions})`;
+        let statsText = '';
+        if (totalAdditions > 0 || totalDeletions > 0) {
+            statsText = ` (+${totalAdditions} -${totalDeletions})`;
         }
         
-        this._view.title = `Working Set${stats}`;
+        this._view.title = `Working Set${statsText}`;
     }
 
     getTreeItem(element: TreeItem): vscode.TreeItem {
@@ -144,44 +159,59 @@ export class WorkingSetProvider implements vscode.TreeDataProvider<TreeItem> {
     }
 
     private buildHierarchy(uris: vscode.Uri[]): TreeItem[] {
-        const root: TreeNode = {};
+        const root: Record<string, TreeNode> = {};
         for (const uri of uris) {
             const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
             if (!workspaceFolder) continue;
+
+            const folderKey = workspaceFolder.name;
+            if (!root[folderKey]) {
+                root[folderKey] = {
+                    __uri: workspaceFolder.uri,
+                    __isFolder: true,
+                    children: {}
+                };
+            }
+
             const relativePath = path.relative(workspaceFolder.uri.fsPath, uri.fsPath);
             const parts = relativePath.split(path.sep);
-            let current = root;
+            let current = root[folderKey];
             let currentPath = workspaceFolder.uri.fsPath;
+
             for (let i = 0; i < parts.length; i++) {
                 const part = parts[i];
+                if (!part) continue;
                 currentPath = path.join(currentPath, part);
-                if (!current[part]) {
-                    current[part] = {
-                        __uri: vscode.Uri.file(currentPath),
-                        __isFolder: i < parts.length - 1
-                    } as TreeNode;
+                
+                if (!current.children) {
+                    current.children = {};
                 }
-                current = current[part] as TreeNode;
+
+                if (!current.children[part]) {
+                    current.children[part] = {
+                        __uri: vscode.Uri.file(currentPath),
+                        __isFolder: i < parts.length - 1,
+                        children: {}
+                    };
+                }
+                current = current.children[part];
             }
         }
         return this.mapToTreeItems(root);
     }
 
-    private mapToTreeItems(node: TreeNode): TreeItem[] {
+    private mapToTreeItems(nodes: Record<string, TreeNode>): TreeItem[] {
         const items: TreeItem[] = [];
-        for (const key in node) {
-            if (key === '__uri' || key === '__isFolder') continue;
-            const childNode = node[key] as TreeNode;
-            const uri = childNode.__uri!;
-            const isFolder = childNode.__isFolder!;
+        for (const key in nodes) {
+            const node = nodes[key];
             const item = new TreeItem(
                 key,
-                uri,
-                isFolder ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
-                isFolder
+                node.__uri,
+                node.__isFolder ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
+                node.__isFolder
             );
-            if (isFolder) {
-                item.children = this.mapToTreeItems(childNode);
+            if (node.__isFolder && node.children) {
+                item.children = this.mapToTreeItems(node.children);
             } else {
                 item.command = {
                     command: 'git-working-set.openFile',
@@ -199,7 +229,13 @@ export class WorkingSetProvider implements vscode.TreeDataProvider<TreeItem> {
     }
 
     dispose() {
+        this.isDisposed = true;
+        if (this.refreshTimer) {
+            clearTimeout(this.refreshTimer);
+            this.refreshTimer = undefined;
+        }
         this.lifeCycleDisposables.forEach(d => d.dispose());
         this.repoDisposables.forEach(d => d.dispose());
+        this.diffStatsCache.clear();
     }
 }

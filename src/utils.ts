@@ -5,11 +5,20 @@ import { GitAPI, Change } from './types';
  * Finds the most comprehensive change for a URI (HEAD -> Working Tree)
  */
 export function getComprehensiveChange(uri: vscode.Uri, gitAPI: GitAPI): Change | undefined {
-    const target = uri.toString().toLowerCase();
+    const target = uri.toString();
+    const targetLower = target.toLowerCase();
 
     for (const repo of gitAPI.repositories) {
-        const wtChange = repo.state.workingTreeChanges.find(c => c.uri.toString().toLowerCase() === target);
-        const idxChange = repo.state.indexChanges.find(c => c.uri.toString().toLowerCase() === target);
+        const wtChanges = repo.state.workingTreeChanges;
+        const idxChanges = repo.state.indexChanges;
+
+        // 1. Try Exact Match (Preferred for Linux/Case-Sensitive)
+        let wtChange = wtChanges.find(c => c.uri.toString() === target);
+        let idxChange = idxChanges.find(c => c.uri.toString() === target);
+
+        // 2. Fallback to Case-Insensitive (Needed for macOS/Windows)
+        if (!wtChange) wtChange = wtChanges.find(c => c.uri.toString().toLowerCase() === targetLower);
+        if (!idxChange) idxChange = idxChanges.find(c => c.uri.toString().toLowerCase() === targetLower);
 
         if (wtChange && idxChange) {
             return {

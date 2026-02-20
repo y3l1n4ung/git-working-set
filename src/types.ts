@@ -38,7 +38,7 @@ export interface Change {
     readonly status: Status;
 }
 
-export const enum Status {
+export enum Status {
     INDEX_MODIFIED = 0,
     INDEX_ADDED = 1,
     INDEX_DELETED = 2,
@@ -60,7 +60,7 @@ export const enum Status {
 }
 
 export interface TreeNode {
-    __uri?: vscode.Uri;
-    __isFolder?: boolean;
-    [key: string]: TreeNode | vscode.Uri | boolean | undefined;
+    __uri: vscode.Uri;
+    __isFolder: boolean;
+    children?: Record<string, TreeNode>;
 }

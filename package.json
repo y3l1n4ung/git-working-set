@@ -58,7 +58,7 @@
       },
       {
         "command": "git-working-set.revealInOS",
-        "title": "Reveal in Finder"
+        "title": "Reveal in File Manager"
       },
       {
         "command": "git-working-set.copyPath",

@@ -22,6 +22,10 @@ suite('Git Working Set Test Suite', () => {
             'git-working-set.openFile',
             'git-working-set.openDiff',
             'git-working-set.openReview',
+            'git-working-set.refresh',
+            'git-working-set.revealInOS',
+            'git-working-set.copyPath',
+            'git-working-set.copyRelativePath',
             'git-working-set.openToSide',
             'git-working-set.findInFolder',
             'git-working-set.openInTerminal',
@@ -77,22 +81,18 @@ suite('Git Working Set Test Suite', () => {
             assert.strictEqual(doc.getText(), '');
         });
 
-        test('ReadOnlyProvider should provide content', async () => {
+        test('ReadOnlyProvider should provide content', async function() {
             if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
-                return;
+                this.skip();
             }
             
-            const root = vscode.workspace.workspaceFolders[0].uri;
+            const root = vscode.workspace.workspaceFolders![0].uri;
             const fileUri = vscode.Uri.joinPath(root, 'package.json');
             const reviewUri = fileUri.with({ scheme: 'git-working-set-review' });
             
-            try {
-                const originalDoc = await vscode.workspace.openTextDocument(fileUri);
-                const doc = await vscode.workspace.openTextDocument(reviewUri);
-                assert.strictEqual(doc.getText(), originalDoc.getText());
-            } catch {
-                console.log('Skipping ReadOnlyProvider test');
-            }
+            const originalDoc = await vscode.workspace.openTextDocument(fileUri);
+            const doc = await vscode.workspace.openTextDocument(reviewUri);
+            assert.strictEqual(doc.getText(), originalDoc.getText());
         });
     });
 });

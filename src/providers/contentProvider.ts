@@ -30,7 +30,11 @@ export class ReadOnlyProvider implements vscode.TextDocumentContentProvider {
             this.output.appendLine(`ReadOnlyProvider: openTextDocument failed, trying fs.readFile for ${uri.path}`);
             try {
                 const bytes = await vscode.workspace.fs.readFile(fileUri);
-                return Buffer.from(bytes).toString('utf8');
+                
+                // Respect user's preferred encoding
+                const encoding: string = vscode.workspace.getConfiguration('files', fileUri).get('encoding', 'utf8');
+                const decoder = new TextDecoder(encoding);
+                return decoder.decode(bytes);
             } catch (innerErr) {
                 this.output.appendLine(`ReadOnlyProvider Error: ${innerErr} for path: ${uri.path}`);
                 return ''; 

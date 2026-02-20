@@ -9,6 +9,7 @@ import {
 
 export async function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('Git Working Set');
+    context.subscriptions.push(outputChannel);
     outputChannel.appendLine('Activating Git Working Set extension...');
     
     // Content Providers
@@ -31,6 +32,7 @@ export async function activate(context: vscode.ExtensionContext) {
     
     // Providers
     const treeDataProvider = new WorkingSetProvider(gitAPI, outputChannel);
+    context.subscriptions.push(treeDataProvider);
     
     // Views
     const treeView = vscode.window.createTreeView('git-working-set', {
@@ -42,20 +44,20 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Commands
     context.subscriptions.push(
-        vscode.commands.registerCommand('git-working-set.openFile', (item) => openFile(item)),
+        vscode.commands.registerCommand('git-working-set.openFile', openFile),
         vscode.commands.registerCommand('git-working-set.openDiff', (item) => openDiff(item, gitAPI, outputChannel)),
         vscode.commands.registerCommand('git-working-set.openReview', () => openReview(gitAPI, outputChannel, treeDataProvider)),
         vscode.commands.registerCommand('git-working-set.refresh', () => treeDataProvider.updateRepositories()),
         
         // Helpers
-        vscode.commands.registerCommand('git-working-set.revealInOS', (item) => revealInOS(item)),
-        vscode.commands.registerCommand('git-working-set.copyPath', (item) => copyPath(item)),
-        vscode.commands.registerCommand('git-working-set.copyRelativePath', (item) => copyRelativePath(item)),
-        vscode.commands.registerCommand('git-working-set.openToSide', (item) => openToSide(item)),
-        vscode.commands.registerCommand('git-working-set.findInFolder', (item) => findInFolder(item)),
-        vscode.commands.registerCommand('git-working-set.openInTerminal', (item) => openInTerminal(item)),
-        vscode.commands.registerCommand('git-working-set.selectForCompare', (item) => selectForCompare(item)),
-        vscode.commands.registerCommand('git-working-set.compareWithSelected', (item) => compareWithSelected(item)),
+        vscode.commands.registerCommand('git-working-set.revealInOS', revealInOS),
+        vscode.commands.registerCommand('git-working-set.copyPath', copyPath),
+        vscode.commands.registerCommand('git-working-set.copyRelativePath', copyRelativePath),
+        vscode.commands.registerCommand('git-working-set.openToSide', openToSide),
+        vscode.commands.registerCommand('git-working-set.findInFolder', findInFolder),
+        vscode.commands.registerCommand('git-working-set.openInTerminal', openInTerminal),
+        vscode.commands.registerCommand('git-working-set.selectForCompare', selectForCompare),
+        vscode.commands.registerCommand('git-working-set.compareWithSelected', compareWithSelected),
         vscode.commands.registerCommand('git-working-set.focus', () => {
             vscode.commands.executeCommand('workbench.view.extension.git-working-set');
         })
