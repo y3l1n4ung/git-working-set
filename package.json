@@ -177,7 +177,10 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
-    "test": "node ./out/test/runTest.js"
+    "test": "node ./out/test/runTest.js",
+    "version": "./version-bump.sh",
+    "publish:vscode": "./publish-vscode.sh",
+    "publish:vscodium": "./publish-vscodium.sh"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
