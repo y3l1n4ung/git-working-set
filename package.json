@@ -2,7 +2,7 @@
   "name": "git-working-set",
   "displayName": "Git Working Set",
   "description": "Shows a focused view of working tree changes in the explorer.",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "Widget-Lab",
   "license": "MIT",
   "engines": {
