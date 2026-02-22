@@ -6,7 +6,7 @@
   "publisher": "Widget-Lab",
   "license": "MIT",
   "engines": {
-    "vscode": "^1.74.0"
+    "vscode": "^1.88.0"
   },
   "bugs": {
     "url": "https://github.com/y3l1n4ung/git-working-set/issues"
@@ -46,6 +46,129 @@
           "icon": "media/icon.svg"
         }
       ]
+    },
+    "commands": [
+      {
+        "command": "git-working-set.openFile",
+        "title": "Open"
+      },
+      {
+        "command": "git-working-set.openToSide",
+        "title": "Open to the Side"
+      },
+      {
+        "command": "git-working-set.revealInOS",
+        "title": "Reveal in File Manager"
+      },
+      {
+        "command": "git-working-set.copyPath",
+        "title": "Copy Path"
+      },
+      {
+        "command": "git-working-set.copyRelativePath",
+        "title": "Copy Relative Path"
+      },
+      {
+        "command": "git-working-set.findInFolder",
+        "title": "Find in Folder..."
+      },
+      {
+        "command": "git-working-set.openInTerminal",
+        "title": "Open in Integrated Terminal"
+      },
+      {
+        "command": "git-working-set.selectForCompare",
+        "title": "Select for Compare"
+      },
+      {
+        "command": "git-working-set.compareWithSelected",
+        "title": "Compare with Selected"
+      },
+      {
+        "command": "git-working-set.openDiff",
+        "title": "Open Changes",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "git-working-set.openReview",
+        "title": "Review Working Set",
+        "icon": "$(git-pull-request)"
+      },
+      {
+        "command": "git-working-set.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "git-working-set.focus",
+        "title": "Focus Working Set"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "git-working-set.openReview",
+          "group": "navigation@1",
+          "when": "view == git-working-set"
+        },
+        {
+          "command": "git-working-set.refresh",
+          "group": "navigation@2",
+          "when": "view == git-working-set"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "git-working-set.openFile",
+          "when": "view == git-working-set && viewItem == file",
+          "group": "navigation@1"
+        },
+        {
+          "command": "git-working-set.openToSide",
+          "when": "view == git-working-set && viewItem == file",
+          "group": "navigation@2"
+        },
+        {
+          "command": "git-working-set.openDiff",
+          "when": "view == git-working-set && viewItem == file",
+          "group": "navigation@3"
+        },
+        {
+          "command": "git-working-set.selectForCompare",
+          "when": "view == git-working-set && viewItem == file",
+          "group": "compare@1"
+        },
+        {
+          "command": "git-working-set.compareWithSelected",
+          "when": "view == git-working-set && viewItem == file",
+          "group": "compare@2"
+        },
+        {
+          "command": "git-working-set.findInFolder",
+          "when": "view == git-working-set && viewItem == folder",
+          "group": "search"
+        },
+        {
+          "command": "git-working-set.openInTerminal",
+          "when": "view == git-working-set && viewItem == folder",
+          "group": "terminal"
+        },
+        {
+          "command": "git-working-set.revealInOS",
+          "when": "view == git-working-set",
+          "group": "7_modification"
+        },
+        {
+          "command": "git-working-set.copyPath",
+          "when": "view == git-working-set",
+          "group": "5_copy@1"
+        },
+        {
+          "command": "git-working-set.copyRelativePath",
+          "when": "view == git-working-set",
+          "group": "5_copy@2"
+        }
+      ]
     }
   },
   "scripts": {
@@ -58,12 +181,16 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^22.19.10",
-    "@types/vscode": "^1.74.0",
+    "@types/vscode": "^1.88.0",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",
+    "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.39.2",
+    "glob": "^13.0.5",
     "globals": "^17.3.0",
+    "mocha": "^11.7.5",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.54.0"
   }
